@@ -1,0 +1,7 @@
+load("defs.bzl", "edition_flag")
+
+edition_flag(
+    name = "edition",
+    build_setting_default = "community",
+    visibility = ["//visibility:public"],
+)

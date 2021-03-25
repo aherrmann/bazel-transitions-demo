@@ -1,0 +1,15 @@
+config_setting(
+    name = "community_edition",
+    flag_values = {
+        "//flag:edition": "community",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "enterprise_edition",
+    flag_values = {
+        "//flag:edition": "enterprise",
+    },
+    visibility = ["//visibility:public"],
+)

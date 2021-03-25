@@ -1,0 +1,166 @@
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@rules_pkg//:pkg.bzl", "pkg_tar")
+load(
+    "//flag:defs.bzl",
+    "edition_binary",
+    "edition_files",
+    "editions_files",
+    "editions_test_suite",
+)
+
+# ----------------------------------------------------------
+# Example of edition specific libraries.
+#
+# We define dedicated targets for each library and define an alias to switch
+# between the two depending on the configured edition.
+
+cc_library(
+    name = "community_lib",
+    srcs = ["community_lib.cc"],
+)
+
+cc_library(
+    name = "enterprise_lib",
+    srcs = ["enterprise_lib.cc"],
+)
+
+alias(
+    name = "lib",
+    actual = select({
+        "//config:community_edition": "community_lib",
+        "//config:enterprise_edition": "enterprise_lib",
+    }),
+)
+
+# ----------------------------------------------------------
+# Example of edition specific data files.
+#
+# We include both edition's raw source files and copy the appropriate file to
+# the expected name.
+
+copy_file(
+    name = "data",
+    src = select({
+        "//config:community_edition": "community_data.txt",
+        "//config:enterprise_edition": "enterprise_data.txt",
+    }),
+    out = "data.txt",
+)
+
+# ----------------------------------------------------------
+# Example of a binary depending on edition specific targets.
+#
+# The target itself does not explicitly depend on the edition.
+
+cc_binary(
+    name = "bin",
+    srcs = ["main.cc"],
+    data = ["data"],
+    deps = [
+        ":lib",
+        "@bazel_tools//tools/cpp/runfiles",
+    ],
+)
+
+# ----------------------------------------------------------
+# Example of a test depending on edition specific sources.
+#
+# The test executes the binary above that has edition specific dependencies.
+#
+# Uses editions_test_suite to generate a test suite covering all editions.
+
+sh_test(
+    name = "test",
+    srcs = select({
+        "//config:community_edition": ["test_community.sh"],
+        "//config:enterprise_edition": ["test_enterprise.sh"],
+    }),
+    args = ["$(rootpath :bin)"],
+    data = ["bin"],
+)
+
+editions_test_suite(
+    name = "test-all",
+    tests = ["test"],
+)
+
+# ----------------------------------------------------------
+# Explicitly configured edition binaries.
+
+edition_binary(
+    name = "bin-ce",
+    edition = "community",
+    executable = "bin",
+)
+
+edition_binary(
+    name = "bin-ee",
+    edition = "enterprise",
+    executable = "bin",
+)
+
+# ----------------------------------------------------------
+# Example of a gotcha.
+#
+# This will see the different editions as duplicates. It warns
+#
+# > Duplicate file in archive: ./bin, picking first occurrence
+# > Duplicate file in archive: ./data.txt, picking first occurrence
+#
+# and produces the following archive.
+#
+# > ./bin
+# > ./bin-ce
+# > ./bin-ee
+# > ./data.txt
+#
+# I.e. data.txt and bin will correspond to one of the editions and the other
+# will be missing. Note that the `edition_binary` symlinks are converted to
+# copies.
+
+pkg_tar(
+    name = "gotcha",
+    srcs = [
+        "bin-ce",
+        "bin-ee",
+    ],
+    include_runfiles = True,
+)
+
+# ----------------------------------------------------------
+# Example bundling both editions into one artifact.
+#
+# First, create a pkg_tar for each edition based on the configuration.
+# Then multiplex it into multiple files using the editions_files rule.
+# Finally, bundle the multiplexed version into a combined pkg_tar.
+
+pkg_tar(
+    name = "bundle-config",
+    srcs = [
+        "bin",
+    ],
+    include_runfiles = True,
+    package_dir = select({
+        "//config:community_edition": "community",
+        "//config:enterprise_edition": "enterprise",
+    }),
+    # pkg_tar doesn't reconstruct runfiles trees, so we do it manually.
+    symlinks = select({
+        "//config:community_edition": {"community/bin.runfiles/transitions-demo/app/data.txt": "../../../data.txt"},
+        "//config:enterprise_edition": {"enterprise/bin.runfiles/transitions-demo/app/data.txt": "../../../data.txt"},
+    }),
+)
+
+editions_files(
+    name = "bundle-each",
+    srcs = ["bundle-config"],
+    editions = [
+        "community",
+        "enterprise",
+    ],
+)
+
+pkg_tar(
+    name = "bundle-all",
+    deps = ["bundle-each"],
+)
