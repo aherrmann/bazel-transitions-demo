@@ -164,3 +164,10 @@ pkg_tar(
     name = "bundle-all",
     deps = ["bundle-each"],
 )
+
+sh_binary(
+    name = "runfiles",
+    srcs = ["runfiles.sh"],
+    data = ["bin-ce", "bin-ee"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
